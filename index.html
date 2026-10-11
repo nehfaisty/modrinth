@@ -102,6 +102,14 @@ select.field:focus{border-color:var(--accent)}
 .ghost{border:0;background:none;color:var(--accent);font-weight:600;font-size:13px;padding:4px 0;margin-top:14px}
 .ghost:hover{text-decoration:underline}
 
+.types{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px;animation:rise .5s var(--ease) both}
+.type-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-weight:600;font-size:14px;transition:all .3s var(--ease)}
+.type-btn svg{width:18px;height:18px}
+.type-btn:hover{color:var(--text);transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+.type-btn[aria-pressed=true]{color:#0b0d12;background:var(--accent);border-color:transparent;box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 35%,transparent)}
+.dlbtn{margin-left:auto;height:32px;padding:0 11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:border-color .2s,transform .2s var(--ease)}
+.dlbtn:hover{border-color:var(--accent);transform:translateY(-1px)}
+.dlbtn svg{width:14px;height:14px}
 .hero{margin:0 0 18px;animation:rise .7s var(--ease) both}
 .hero h1{margin:0;font-size:clamp(26px,3.6vw,38px);letter-spacing:-.03em;line-height:1.1}
 .hero p{margin:8px 0 0;color:var(--muted)}
@@ -340,8 +348,9 @@ select.field:focus{border-color:var(--accent)}
   <aside class="filters" id="filters" aria-label="Filters"></aside>
 
   <section>
+    <nav class="types" id="types" aria-label="Content type"></nav>
     <div id="hero" class="hero">
-      <h1>Find your next <span class="grad">Modrinth</span> mod</h1>
+      <h1>Find your next <span class="grad" id="heroWord">mod</span> on Modrinth</h1>
       <p>Search, filter, save and inspect mods — powered by the Modrinth API.</p>
     </div>
     <div class="toolbar">
@@ -391,6 +400,14 @@ const SITE = 'https://modrinth.com';
 const LOADERS = ['fabric','forge','neoforge','quilt'];
 const CATEGORIES = ['adventure','decoration','equipment','food','game-mechanics','library','magic','management','mobs','optimization','storage','technology','transportation','utility','worldgen'];
 const SORTS = [['relevance','Relevance'],['downloads','Downloads'],['follows','Follows'],['updated','Recently updated'],['newest','Newest']];
+const TYPES = [
+  {id:'mod',          label:'Mods',           singular:'mod',          icon:'mod'},
+  {id:'plugin',       label:'Plugins',        singular:'plugin',       icon:'plugin'},
+  {id:'datapack',     label:'Datapacks',      singular:'datapack',     icon:'datapack'},
+  {id:'resourcepack', label:'Resource packs', singular:'resource pack', icon:'resourcepack'},
+  {id:'shader',       label:'Shaders',        singular:'shader',       icon:'shader'}
+];
+const TAGS = {loaders:[], categories:[], gameVersions:[]};
 const ACCENTS = {indigo:'#818cf8', emerald:'#34d399', rose:'#fb7185', amber:'#fbbf24', sky:'#38bdf8'};
 const THEMES = [
   {id:'night',  name:'Night',  bg:'#0b0d12', c:'#818cf8'},
@@ -419,7 +436,12 @@ const ICONS = {
   code:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/>',
   bookmark:'<path d="M6 3h12v18l-6-4-6 4z"/>',
   alert:'<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5h.01"/>',
-  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/>'
+  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/>',
+  mod:'<path d="M4 7h4a2 2 0 1 1 4 0h4v4a2 2 0 1 0 0 4v4h-4a2 2 0 1 0-4 0H4v-4a2 2 0 1 1 0-4z"/>',
+  plugin:'<path d="M9 2v5M15 2v5M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v6"/>',
+  datapack:'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  resourcepack:'<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 9"/>',
+  shader:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
 };
 const ic = (n, cls='') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]||''}</svg>`;
 
@@ -438,7 +460,7 @@ let settings = {...DEFAULTS, ...store('lumen-settings', {})};
 let saved = store('lumen-saved', []);             // array of search hits
 const known = new Map();                          // project_id -> hit (for lookups)
 const state = {
-  tab:'explore', query:'', sort:'relevance',
+  tab:'explore', type:'mod', query:'', sort:'relevance',
   loaders:new Set(), categories:new Set(), gameVersion:'',
   offset:0, total:0, hits:[], loading:false
 };
@@ -474,26 +496,69 @@ function buildSort(){
 }
 
 function buildFilters(){
+  const loaderNames = TAGS.loaders.filter(l => (l.supported_project_types || []).includes(state.type)).map(l => l.name);
+  const catNames = TAGS.categories.filter(c => c.project_type === state.type).map(c => c.name);
   $('#filters').innerHTML = `
-    <h4>Loader</h4>
-    <div class="chips" id="loaderChips">${LOADERS.map(l => chip('loader', l)).join('')}</div>
-    <h4>Categories</h4>
-    <div class="chips" id="catChips">${CATEGORIES.map(c => chip('cat', c)).join('')}</div>
+    ${loaderNames.length ? `<h4>Loader</h4><div class="chips">${loaderNames.map(n => chip('loader', n, state.loaders.has(n))).join('')}</div>` : ''}
+    ${catNames.length ? `<h4>Categories</h4><div class="chips">${catNames.map(n => chip('cat', n, state.categories.has(n))).join('')}</div>` : ''}
     <h4>Minecraft version</h4>
-    <select class="field" id="gameVersion"><option value="">Any version</option></select>
+    <select class="field" id="gameVersion"><option value="">Any version</option>${TAGS.gameVersions.map(v => `<option value="${esc(v)}" ${v === state.gameVersion ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
     <button class="ghost" id="resetFilters">${ic('reset')} Reset filters</button>`;
-  $('#resetFilters').innerHTML = `${ic('reset')} Reset filters`;
 }
-const chip = (kind, v) => `<button class="chip" data-kind="${kind}" data-v="${v}" aria-pressed="false">${v}</button>`;
+const chip = (kind, v, on = false) => `<button class="chip" data-kind="${kind}" data-v="${esc(v)}" aria-pressed="${on}">${esc(v)}</button>`;
 
-async function loadGameVersions(){
+async function loadTags(){
   try{
-    const res = await fetch(`${API}/tag/game_version`);
-    const list = await res.json();
-    const releases = list.filter(v => v.version_type === 'release').slice(0, 60);
-    $('#gameVersion').insertAdjacentHTML('beforeend', releases.map(v => `<option value="${esc(v.version)}">${esc(v.version)}</option>`).join(''));
-  }catch{ toast('Could not load Minecraft versions', 'error'); }
+    const [loaders, categories, versions] = await Promise.all([
+      fetch(`${API}/tag/loader`).then(r => r.json()),
+      fetch(`${API}/tag/category`).then(r => r.json()),
+      fetch(`${API}/tag/game_version`).then(r => r.json())
+    ]);
+    TAGS.loaders = loaders;
+    TAGS.categories = categories;
+    TAGS.gameVersions = versions.filter(v => v.version_type === 'release').map(v => v.version).slice(0, 60);
+    buildFilters();
+  }catch{ toast('Could not load filters from Modrinth', 'error'); }
 }
+
+function buildTypes(){
+  $('#types').innerHTML = TYPES.map(t => `
+    <button class="type-btn" data-type="${t.id}" aria-pressed="${t.id === state.type}">${ic(t.icon)}<span>${t.label}</span></button>`).join('');
+}
+function setType(t){
+  if(state.type === t) return;
+  state.type = t;
+  state.loaders.clear(); state.categories.clear();
+  document.querySelectorAll('.type-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.type === t));
+  $('#heroWord').textContent = TYPES.find(x => x.id === t).singular;
+  buildFilters();
+  if(state.tab !== 'explore') setTab('explore'); else runSearch(true);
+}
+
+/* one-click download: finds the newest matching file and points the browser at Modrinth's CDN */
+async function quickDownload(id){
+  const hit = known.get(id) || saved.find(s => s.project_id === id);
+  const params = new URLSearchParams();
+  if(state.loaders.size) params.set('loaders', JSON.stringify([...state.loaders]));
+  if(state.gameVersion) params.set('game_versions', JSON.stringify([state.gameVersion]));
+  toast(`Finding the latest file for ${hit?.title || 'this project'}…`);
+  try{
+    let res = await fetch(`${API}/project/${id}/version?${params}`);
+    if(!res.ok) throw new Error(`Modrinth returned ${res.status}`);
+    let versions = await res.json();
+    let note = '';
+    if(!versions.length){
+      versions = await (await fetch(`${API}/project/${id}/version`)).json();
+      note = ' (no exact match, latest shown)';
+    }
+    const file = versions[0]?.files?.find(f => f.primary) || versions[0]?.files?.[0];
+    if(!file) throw new Error('No downloadable file found');
+    const a = Object.assign(document.createElement('a'), {href: file.url, download: file.filename, target: '_blank', rel: 'noopener'});
+    document.body.append(a); a.click(); a.remove();
+    toast(`Downloading ${file.filename}${note}`, 'ok');
+  }catch(err){ toast(err.message || 'Download failed', 'error'); }
+}
+
 
 /* ---------- search ---------- */
 async function runSearch(reset = false){
@@ -502,7 +567,7 @@ async function runSearch(reset = false){
   if(controller) controller.abort();
   const ctl = controller = new AbortController();
 
-  const facets = [['project_type:mod']];
+  const facets = [[`project_type:${state.type}`]];
   if(state.loaders.size) facets.push([...state.loaders].map(l => `categories:${l}`));
   for(const c of state.categories) facets.push([`categories:${c}`]);
   if(state.gameVersion) facets.push([`versions:${state.gameVersion}`]);
@@ -619,7 +684,7 @@ function cardHTML(h, i = 0){
     </div>
     <p class="desc">${esc(h.description)}</p>
     <div class="tags">${cats.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
-    <div class="stats"><span>${ic('download')}${compact(h.downloads)}</span><span>${ic('heart')}${compact(h.follows)}</span></div>
+    <div class="stats"><span>${ic('download')}${compact(h.downloads)}</span><span>${ic('heart')}${compact(h.follows)}</span><button class="dlbtn" data-dl aria-label="Download latest file">${ic('download')}Get</button></div>
   </article>`;
 }
 
@@ -629,7 +694,7 @@ function toggleSaved(hit){
   if(idx >= 0){ saved.splice(idx, 1); toast(`Removed ${hit.title}`); }
   else{
     saved.unshift({
-      project_id:hit.project_id, slug:hit.slug, title:hit.title, description:hit.description,
+      project_id:hit.project_id, slug:hit.slug, project_type:hit.project_type, title:hit.title, description:hit.description,
       icon_url:hit.icon_url, author:hit.author, downloads:hit.downloads, follows:hit.follows,
       categories:hit.categories || [], date_modified:hit.date_modified
     });
@@ -667,7 +732,7 @@ async function openDetail(id){
     <p class="d-desc">${esc(hit.description)}</p>
     <div class="d-actions">
       <button class="btn primary" id="dSave">${ic('heart')}<span>${isSaved ? 'Saved' : 'Save mod'}</span></button>
-      <a class="btn" href="${SITE}/mod/${esc(hit.slug || id)}" target="_blank" rel="noopener">${ic('external')}Open on Modrinth</a>
+      <a class="btn" href="${SITE}/${esc(hit.project_type || 'mod')}/${esc(hit.slug || id)}" target="_blank" rel="noopener">${ic('external')}Open on Modrinth</a>
     </div>
     <div class="d-stats">
       <div class="d-stat"><small>Downloads</small><div>${compact(hit.downloads)}</div></div>
@@ -864,6 +929,7 @@ function bind(){
     debounceTimer = setTimeout(() => runSearch(true), 280);
   });
 
+  $('#types').addEventListener('click', e => { const b = e.target.closest('.type-btn'); if(b) setType(b.dataset.type); });
   $('#sort').addEventListener('change', e => { state.sort = e.target.value; runSearch(true); });
 
   $('#filters').addEventListener('click', e => {
@@ -896,6 +962,7 @@ function bind(){
   $('#grid').addEventListener('click', e => {
     const card = e.target.closest('.card'); if(!card) return;
     const hit = known.get(card.dataset.id) || saved.find(s => s.project_id === card.dataset.id);
+    if(e.target.closest('[data-dl]')){ e.stopPropagation(); quickDownload(card.dataset.id); return; }
     if(e.target.closest('[data-save]')){ e.stopPropagation(); if(hit) toggleSaved(hit); return; }
     openDetail(card.dataset.id);
   });
@@ -929,11 +996,12 @@ function boot(){
   setupSanitizer();
   paintIcons();
   buildSort();
+  buildTypes();
   buildFilters();
   applySettings();
   updateSavedBadge();
   bind();
-  loadGameVersions();
+  loadTags();
   setTab('explore');
   const tabs = $('#tabs');
   tabs.querySelector('.tab-pill')?.setAttribute('aria-hidden','true');
