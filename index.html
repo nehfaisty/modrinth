@@ -294,6 +294,11 @@ select.field:focus{border-color:var(--accent)}
 .toast.ok{border-color:#34d399}
 
 .filter-toggle{display:none}
+.site-foot{position:relative;z-index:1;max-width:1500px;margin:0 auto;padding:24px clamp(14px,3vw,28px) 40px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;line-height:1.6}
+.site-foot p{margin:0}
+.site-foot nav{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 16px}
+.site-foot a{color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+.site-foot a:hover{color:var(--text)}
 
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
@@ -373,7 +378,7 @@ select.field:focus{border-color:var(--accent)}
   </section>
 </main>
 
-<aside class="drawer" id="drawer" aria-label="Mod details">
+<aside class="drawer" id="drawer" aria-label="Mod details" inert>
   <div class="drawer-head">
     <strong>Mod details</strong>
     <button class="icon-btn" id="closeDrawer" aria-label="Close"></button>
@@ -381,7 +386,7 @@ select.field:focus{border-color:var(--accent)}
   <div class="drawer-body" id="drawerBody"></div>
 </aside>
 
-<div class="modal-wrap" id="settingsModal" aria-hidden="true">
+<div class="modal-wrap" id="settingsModal" aria-hidden="true" inert>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="setTitle">
     <div class="modal-head">
       <h2 id="setTitle">Settings</h2>
@@ -391,12 +396,29 @@ select.field:focus{border-color:var(--accent)}
   </div>
 </div>
 
+<footer class="site-foot">
+  <p>Lumen is an unofficial fan tool. It is not affiliated with, endorsed by, or sponsored by Modrinth, Mojang, or Microsoft. Minecraft is a trademark of Mojang Studios. Mod names, icons, and screenshots belong to their creators.</p>
+  <nav aria-label="Legal">
+    <a href="legal.html#business">Business details</a>
+    <a href="legal.html#privacy">Privacy</a>
+    <a href="legal.html#terms">Terms</a>
+    <a href="legal.html#refunds">Refunds</a>
+    <a href="legal.html#cookies">Cookies</a>
+    <a href="legal.html#deletion">Delete my data</a>
+    <a href="legal.html#third-party">Third-party services</a>
+    <a href="legal.html#licenses">Licenses</a>
+  </nav>
+</footer>
+
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
 /* ---------- constants ---------- */
 const API = 'https://api.modrinth.com/v2';
 const SITE = 'https://modrinth.com';
+/* Where the legal pages live. Same project: 'legal.html'.
+   Separate Vercel project: the full URL, e.g. 'https://lumen-legal.vercel.app/legal.html' */
+const LEGAL_URL = 'legal.html';
 const LOADERS = ['fabric','forge','neoforge','quilt'];
 const CATEGORIES = ['adventure','decoration','equipment','food','game-mechanics','library','magic','management','mobs','optimization','storage','technology','transportation','utility','worldgen'];
 const SORTS = [['relevance','Relevance'],['downloads','Downloads'],['follows','Follows'],['updated','Recently updated'],['newest','Newest']];
@@ -722,7 +744,10 @@ async function openDetail(id){
   if(!hit) return;
   const body = $('#drawerBody');
   const drawer = $('#drawer'), overlay = $('#overlay');
+  if(!drawer.classList.contains('open')) returnFocus = document.activeElement;
   drawer.classList.add('open'); overlay.classList.add('open');
+  drawer.inert = false;
+  setTimeout(() => $('#closeDrawer').focus(), 80);
   const isSaved = saved.some(s => s.project_id === id);
   body.innerHTML = `
     <div class="d-top">
@@ -777,7 +802,13 @@ async function openDetail(id){
     if($('#dExtra')) $('#dExtra').innerHTML = `<p style="color:var(--muted)">Couldn’t load full details right now.</p>`;
   }
 }
-function closeDrawer(){ $('#drawer').classList.remove('open'); $('#overlay').classList.remove('open'); }
+function closeDrawer(){
+  if(!$('#drawer').classList.contains('open')) return;
+  $('#drawer').classList.remove('open');
+  $('#overlay').classList.remove('open');
+  $('#drawer').inert = true;
+  returnFocus?.focus?.();
+}
 
 /* Modrinth descriptions are Markdown (often with HTML for badges and images).
    marked renders it; DOMPurify strips anything unsafe. Falls back to plain text if the CDN fails. */
@@ -800,14 +831,29 @@ function setupSanitizer(){
 }
 
 /* ---------- settings modal ---------- */
+let returnFocus = null;   // element to focus when a panel closes
 function openSettings(){
   renderSettings();
+  returnFocus = document.activeElement;
   $('#settingsModal').classList.add('open');
   $('#settingsModal').setAttribute('aria-hidden','false');
+  $('#settingsModal').inert = false;
+  setTimeout(() => $('#closeSettings').focus(), 60);
 }
 function closeSettings(){
+  if(!$('#settingsModal').classList.contains('open')) return;
   $('#settingsModal').classList.remove('open');
   $('#settingsModal').setAttribute('aria-hidden','true');
+  $('#settingsModal').inert = true;
+  returnFocus?.focus?.();
+}
+/* keeps Tab / Shift+Tab inside an open panel */
+function trapFocus(e, container){
+  const items = [...container.querySelectorAll('button,a[href],input,select,textarea')].filter(el => !el.disabled && el.offsetParent !== null);
+  if(!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
 }
 function renderSettings(){
   $('#setBody').innerHTML = `
@@ -856,7 +902,8 @@ function renderSettings(){
       <div><h4>Your data</h4><p>${saved.length} saved mod${saved.length===1?'':'s'} stored in this browser.</p></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn" id="exportSaved">${ic('download')}Export</button>
-        <button class="btn danger" id="clearSaved">Clear</button>
+        <button class="btn danger" id="clearSaved">Clear saved</button>
+        <button class="btn danger" id="deleteData">Delete all my data</button>
       </div>
     </div>
     <div class="set-row">
@@ -879,6 +926,7 @@ function bindSettingsEvents(e){
     if(!confirm('Remove all saved mods?')) return;
     saved = []; save('lumen-saved', saved); updateSavedBadge(); if(state.tab==='saved') renderSaved(); toast('Saved list cleared');
   }
+  else if(t.id === 'deleteData'){ return deleteAllData(); }
   else if(t.id === 'resetSettings'){
     settings = {...DEFAULTS}; toast('Settings reset', 'ok');
   }
@@ -888,6 +936,19 @@ function bindSettingsEvents(e){
 }
 function bindSettingsSelect(e){
   if(e.target.id === 'pageSize'){ settings.pageSize = Number(e.target.value); applySettings(); }
+}
+
+function deleteAllData(){
+  if(!confirm('Delete all saved mods and settings stored in this browser? This cannot be undone.')) return;
+  try{ localStorage.removeItem('lumen-saved'); localStorage.removeItem('lumen-settings'); }catch{}
+  saved = [];
+  settings = {...DEFAULTS};
+  applySettings();
+  try{ localStorage.removeItem('lumen-settings'); }catch{}   // applySettings writes defaults back; remove them again
+  updateSavedBadge();
+  if(state.tab === 'saved') renderSaved();
+  renderSettings();
+  toast('All local data deleted', 'ok');
 }
 
 function exportSaved(){
@@ -985,6 +1046,10 @@ function bind(){
   document.addEventListener('keydown', e => {
     if(e.key === '/' && !/input|textarea|select/i.test(document.activeElement.tagName)){ e.preventDefault(); $('#q').focus(); }
     if(e.key === 'Escape'){ closeDrawer(); closeSettings(); }
+    if(e.key === 'Tab'){
+      if($('#settingsModal').classList.contains('open')) trapFocus(e, $('#settingsModal'));
+      else if($('#drawer').classList.contains('open')) trapFocus(e, $('#drawer'));
+    }
   });
 
   const io = new IntersectionObserver(entries => { if(entries.some(en => en.isIntersecting)) maybeInfinite(); }, {rootMargin:'400px'});
@@ -994,6 +1059,9 @@ function bind(){
 /* ---------- boot ---------- */
 function boot(){
   setupSanitizer();
+  document.querySelectorAll('.site-foot a[href^="legal.html"]').forEach(a => {
+    a.href = LEGAL_URL + a.getAttribute('href').slice('legal.html'.length);
+  });
   paintIcons();
   buildSort();
   buildTypes();
